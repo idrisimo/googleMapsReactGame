@@ -1,15 +1,44 @@
-import logo from './logo.svg';
 import './App.css';
-import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api';
-import { useCallback, useState } from 'react';
+import { GoogleMap, Marker, useJsApiLoader, Polyline } from '@react-google-maps/api';
+import { useCallback, useState, useRef } from 'react';
+
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  var R = 6371; // Radius of the earth in km
+  var dLat = deg2rad(lat2 - lat1);  // deg2rad below
+  var dLon = deg2rad(lon2 - lon1);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    ;
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var d = R * c; // Distance in km
+  return d.toFixed(2);
+}
+
+const deg2rad = (deg) => {
+  return deg * (Math.PI / 180)
+}
+
+const getTravelDuration = (distance, speed) => {
+  return distance / (speed/1000) // Speed is not in meters per second
+}
+
 
 function App() {
+
+  const [playerName, setPlayerName] = useState('Idris')
+  const [health, setPlayerHealth] = useState(100)
+  const [alitude, setAltitude] = useState([])
+  const [speed, setSpeed] = useState(37)
+  const [currentLatLng, setCurrentLatLng] = useState([])
+  const [destinationLatLng, setDestinationLatLng] = useState([])
 
   const containerStyle = {
     width: '100vw',
     height: '100vh'
   };
-  
+
   const center = {
     lat: 51.8872037,
     lng: -0.4188479
@@ -22,10 +51,106 @@ function App() {
 
   const player2 = {
     lat: 51.8872037,
-    lng: -0.4100480
+    lng: -0.4188800
   };
 
+  const endPoint = {
+    lat: 51.8872037,
+    lng: 0
+  }
+
   const playerPins = [player1, player2]
+
+
+  // Movement animation
+  // https://stackoverflow.com/questions/72262867/trying-to-animate-markers-movement-with-react-google-maps-smoothly
+  // https://stackoverflow.com/a/55043218/9058905
+  function animateMarkerTo(marker, newPosition) {
+    // save current position. prefixed to avoid name collisions. separate for lat/lng to avoid calling lat()/lng() in every frame
+    marker.AT_startPosition_lat = marker.getPosition().lat();
+    marker.AT_startPosition_lng = marker.getPosition().lng();
+    var newPosition_lat = newPosition.lat();
+    var newPosition_lng = newPosition.lng();
+    const distanceAtoB = getDistance(marker.AT_startPosition_lat, marker.AT_startPosition_lng, newPosition_lat, newPosition_lng) // Result is in KM
+    const durationOfTravel = getTravelDuration(distanceAtoB, speed) // in seconds
+    console.log(distanceAtoB, "KM")
+    console.log(durationOfTravel, "Seconds")
+    console.log(speed, "speed")
+    var options = {
+      duration: durationOfTravel * 1000,
+      easing: function (x, t, b, c, d) {
+        // jquery animation: swing (easeOutQuad)
+        return -c * (t /= d) * (t - 2) + b;
+      }
+    };
+
+    window.requestAnimationFrame =
+      window.requestAnimationFrame ||
+      window.mozRequestAnimationFrame ||
+      window.webkitRequestAnimationFrame ||
+      window.msRequestAnimationFrame;
+    window.cancelAnimationFrame =
+      window.cancelAnimationFrame || window.mozCancelAnimationFrame;
+
+
+    // crossing the 180° meridian and going the long way around the earth?
+    if (Math.abs(newPosition_lng - marker.AT_startPosition_lng) > 180) {
+      if (newPosition_lng > marker.AT_startPosition_lng) {
+        newPosition_lng -= 360;
+      } else {
+        newPosition_lng += 360;
+      }
+    }
+
+    var animateStep = function (marker, startTime) {
+      var ellapsedTime = new Date().getTime() - startTime;
+      var durationRatio = ellapsedTime / options.duration; // 0 - 1
+      var easingDurationRatio = options.easing(
+        durationRatio,
+        ellapsedTime,
+        0,
+        1,
+        options.duration
+      );
+
+      if (durationRatio < 1) {
+        marker.setPosition({
+          lat:
+            marker.AT_startPosition_lat +
+            (newPosition_lat - marker.AT_startPosition_lat) * easingDurationRatio,
+          lng:
+            marker.AT_startPosition_lng +
+            (newPosition_lng - marker.AT_startPosition_lng) * easingDurationRatio
+        });
+
+        // use requestAnimationFrame if it exists on this browser. If not, use setTimeout with ~60 fps
+        if (window.requestAnimationFrame) {
+          marker.AT_animationHandler = window.requestAnimationFrame(function () {
+            animateStep(marker, startTime);
+          });
+        } else {
+          marker.AT_animationHandler = setTimeout(function () {
+            animateStep(marker, startTime);
+          }, 17);
+        }
+      } else {
+        marker.setPosition(newPosition);
+      }
+    };
+
+    // stop possibly running animation
+    if (window.cancelAnimationFrame) {
+      window.cancelAnimationFrame(marker.AT_animationHandler);
+    } else {
+      clearTimeout(marker.AT_animationHandler);
+    }
+
+
+
+    animateStep(marker, new Date().getTime());
+  }
+
+  const markerRef = useRef(null);
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -42,26 +167,38 @@ function App() {
     setMap(map)
   }, [])
 
+  const onClick = useCallback((event) => {
+    animateMarkerTo(markerRef.current.marker, event.latLng);
+    console.log(event.latLng)
+    setCurrentLatLng(markerRef.current.marker.internalPosition)
+    setDestinationLatLng(event.latLng)
+  }, []);
+
+
   const onUnmount = useCallback(function callback(map) {
     setMap(null)
   }, [])
 
-  return  isLoaded ? (
+  return isLoaded ? (
     <div className="App">
       <main className="App-main">
-        <h1>My Map</h1>
         <GoogleMap
           mapContainerStyle={containerStyle}
           center={center}
-          zoom={10}
+          zoom={7}
           onLoad={onLoad}
           onUnmount={onUnmount}
+          onClick={onClick}
         >
-        { /* Child components, such as markers, info windows, etc. */ }
-          {playerPins.map(player => (
-            <Marker position={player}  icon={"https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png"} label={"test"} />
-          ))}
-
+          { /* Child components, such as markers, info windows, etc. */}
+          {/* {playerPins.map(player => (
+            <Marker ref={markerRef} position={player}  icon={"https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png"} label={"test label"} animation={"BOUNCE"} />
+          ))} */}
+          <Marker ref={markerRef} position={player1} icon={{
+        url:
+          "https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png",
+      }} label={"test label"} />
+          <Polyline path={[currentLatLng, destinationLatLng]} />
           <></>
         </GoogleMap>
       </main>
