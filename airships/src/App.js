@@ -1,6 +1,7 @@
 import './App.css';
-import { GoogleMap, Marker, useJsApiLoader, Polyline } from '@react-google-maps/api';
+import { GoogleMap, Marker, useJsApiLoader, Polyline, InfoWindow} from '@react-google-maps/api';
 import { useCallback, useState, useRef } from 'react';
+
 
 const getDistance = (lat1, lon1, lat2, lon2) => {
   var R = 6371; // Radius of the earth in km
@@ -23,7 +24,7 @@ const deg2rad = (deg) => {
 const getTravelDuration = (distance, speed) => {
   return distance / (speed/1000) // Speed is not in meters per second
 }
-
+// const google = window.google;
 
 function App() {
 
@@ -179,6 +180,11 @@ function App() {
     setMap(null)
   }, [])
 
+  const image = {
+    url:"https://cdn-icons-png.flaticon.com/512/1023/1023356.png", 
+    scaledSize: new window.google.maps.Size(50, 50)
+  }
+
   return isLoaded ? (
     <div className="App">
       <main className="App-main">
@@ -194,10 +200,8 @@ function App() {
           {/* {playerPins.map(player => (
             <Marker ref={markerRef} position={player}  icon={"https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png"} label={"test label"} animation={"BOUNCE"} />
           ))} */}
-          <Marker ref={markerRef} position={player1} icon={{
-        url:
-          "https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png",
-      }} label={"test label"} />
+          <Marker ref={markerRef} position={player1} icon={image} label={"Hello World"}/>
+          {/* <InfoWindow  position={currentLatLng}><h1>InfoWindow</h1></InfoWindow> */}
           <Polyline path={[currentLatLng, destinationLatLng]} />
           <></>
         </GoogleMap>
